@@ -1,82 +1,95 @@
 
 
 #include <boost/process.hpp>
-#include <boost/algorithm/string.hpp>
-#include <boost/phoenix/phoenix.hpp>
-#include <boost/utility/string_ref.hpp>
+
 #include <iostream>
 #include <iterator>
+#include <string_view>
 
-namespace bp = boost::process;
-using boost::phoenix::arg_names::arg1;
-using boost::phoenix::arg_names::arg2;
-using boost::phoenix::arg_names::arg3;
-using boost::phoenix::arg_names::arg4;
-using boost::phoenix::arg_names::arg5;
+#include <range/v3/all.hpp>
 
-class ExecResult{
+#include <gtest/gtest.h>
+
+// TODO:
+// 1. command not exists
+// 2. process ternimal
+// 3. set environment
+// 4. not capture stdout and stderr
+// 5. close stdout,stderr,stdin
+// 6. redectory stdout,stderr
+class ChildProcess {
 public:
-  ExecResult(int exit_code, std::string stdout_raw, std::string stderr_raw)
-    :exit_code(exit_code),
-     stdout_raw(std::move(stdout_raw)),
-     stderr_raw(std::move(stderr_raw)) {
+  template <typename... Args>
+  explicit ChildProcess(Args&&... args):
+    stdout_stream(),
+    stderr_stream(),
+    child(std::forward<Args>(args)..., boost::process::std_out > stdout_stream, boost::process::std_err > stderr_stream),
+    stdout_buf(std::istreambuf_iterator<char>(stdout_stream), std::istreambuf_iterator<char>()),
+    stderr_buf(std::istreambuf_iterator<char>(stderr_stream), std::istreambuf_iterator<char>()),
+    _exit_code(-1),
+    _all_lines_range(stdout_buf | ranges::views::trim((int(*)(int))&std::isspace) | ranges::views::split_when(&isnewline))
+    { if (child.valid()) { child.wait(); _exit_code = child.exit_code(); } }
 
-    auto begin = find_if(this->stdout_raw.begin(), this->stdout_raw.end(), [](auto x) { return !std::isspace(x); });
-    auto end = find_if(this->stdout_raw.rbegin(), this->stdout_raw.rend(), [](auto x) { return !std::isspace(x); }).base();
-    this->stdout_str = boost::string_ref(&*begin, std::distance(begin, end));
-    auto b = this->stdout_str.begin();
-    for(auto i = this->stdout_str.begin(); i != this->stdout_str.end(); ++i) {
-      if (*i == '\n') {
-        auto e = i;
-        if (*(e-1) == '\r') { --e; }
-        boost::string_ref device(&*b, std::distance(b, e));
-        if (device.size() > 0) {
-          lines.push_back(device);
-        }
-        b = i; ++b;
-      }
-    }
-    if (b != this->stdout_str.end()) {
-      lines.push_back(boost::string_ref(&*b, std::distance(b, this->stdout_str.end())));
-    }
+  ChildProcess() = delete;
+  ChildProcess(const ChildProcess&) = delete;
+  ChildProcess& operator=(const ChildProcess&) = delete;
+
+  ChildProcess(ChildProcess&&) = delete;
+  ChildProcess& operator=(ChildProcess&&) = delete;
+
+  std::string_view stdout_str() { return std::string_view(stdout_buf.data(), stdout_buf.size()); }
+  std::string_view stderr_str() { return std::string_view(stderr_buf.data(), stderr_buf.size()); }
+  const std::vector<char>& stdout_raw() { return stdout_buf; }
+  const std::vector<char>& stderr_raw() { return stderr_buf; }
+  std::string_view first_line() & {
+    decltype(auto) first_line_range = *_all_lines_range.begin();
+    return std::string_view(&*(first_line_range.begin()), ranges::distance(first_line_range));
   }
-  ExecResult() = delete;
-  ExecResult(const ExecResult&) = delete;
-  ExecResult(ExecResult&&) = default;
-
-  int exit_code = 0;
-  std::string stdout_raw;
-  std::string stderr_raw;
-
-  boost::string_ref stdout_str;
-  std::vector<boost::string_ref> lines;
+  std::string first_line() && {
+    decltype(auto) first_line_range = *_all_lines_range.begin();
+    return std::string(&*(first_line_range.begin()), ranges::distance(first_line_range));
+  }
+  int exit_code() { return _exit_code; }
+  auto& all_lines_range() {
+    return this->_all_lines_range;
+  }
+private:
+  static bool isnewline(char x) { return x == '\n' || x == '\r'; }
+private:
+  boost::process::ipstream stdout_stream;
+  boost::process::ipstream stderr_stream;
+  boost::process::child child;
+  std::vector<char> stdout_buf;
+  std::vector<char> stderr_buf;
+  int _exit_code;
+  decltype(stdout_buf | ranges::views::trim((int(*)(int))nullptr) | ranges::views::split_when((bool(*)(char))nullptr)) _all_lines_range;
 };
 
-std::ostream& operator<<(std::ostream &out, const ExecResult& result) {
-  out << "'" << result.stdout_str << "'";
-  return out;
-}
+class Run {
+public:
+  template <typename... Args>
+  explicit Run(Args&&... args):child(std::forward<Args>(args)...), _exit_code(-1) {
+    if (child.valid()) {
+      child.wait();
+      _exit_code = child.exit_code();
+    }
+  }
 
+  Run() = delete;
+  Run(const Run&) = delete;
+  Run& operator=(const Run&) = delete;
 
-template <typename... Args>
-ExecResult run(Args&&... args) {
-  bp::ipstream my_stdout, my_stderr;
-  bp::child x(std::forward<Args>(args)..., bp::std_out > my_stdout, bp::std_err > my_stderr);
-  std::string output(std::string((std::istreambuf_iterator<char>(my_stdout)), std::istreambuf_iterator<char>()));
-  std::string output2(std::string((std::istreambuf_iterator<char>(my_stderr)), std::istreambuf_iterator<char>()));
-  x.wait();
-  return ExecResult{x.exit_code(), std::move(output), std::move(output2)};
-}
+  Run(Run&&) = delete;
+  Run& operator=(Run&&) = delete;
 
-int main() {
-  // auto env = boost::this_process::environment();
-  // std::cout << run("echo -E xx\\nyy") << std::endl;
-  // std::cout << run("g++ --version") << std::endl;
-  // std::cout << run("uname -s") << std::endl;
-  // std::cout << run("false") << std::endl;
-  // std::cout << run("printenv", env) << std::endl;
-  // std::cout << run("exit 4", env) << std::endl;
-  auto adb_cmd = bp::search_path("adb");
+  int exit_code() { return _exit_code; }
+private:
+  boost::process::child child;
+  int _exit_code;
+};
+
+TEST(CommandPath, CheckExists) {
+  auto adb_cmd = boost::process::search_path("adb");
   const char* ADB_ENV = std::getenv("ADB");
   if (ADB_ENV && std::strlen(ADB_ENV) > 0) {
     adb_cmd = ADB_ENV;
@@ -89,34 +102,70 @@ int main() {
     adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Library" / "Android" / "sdk" / "platform-tools" / "adb";
 #endif
   }
-  if (exists(adb_cmd) && is_regular_file(adb_cmd)) {
-    auto x = run(adb_cmd, "devices");
-    std::vector<std::string> devices;
-    if (x.lines.size() > 1) {
-      auto begin = x.lines.cbegin();
-      std::advance(begin, 1);
-      std::for_each(begin, x.lines.cend(), [&devices](const boost::string_ref& line) { devices.push_back(std::string(line.begin(), std::find_if(line.begin(), line.end(), [](char c1) { return std::isspace(c1); }))); });
-    }
 
-    for(const std::string& device: devices) {
-      std::cout << "===============" << device << "==============" << std::endl;
-      for (auto const& line :run(adb_cmd, "-s", device, "shell", "cmd", "package", "list", "packages", "-3").lines) {
-        if (line.starts_with("package:")) {
-          std::cout << "'" << boost::string_ref(line.begin() + 8, std::distance(line.begin() + 8, line.end())) << "'" <<std::endl;
-        }
-      }
-      for (auto const& line :run(adb_cmd, "-s", device, "exec-out", "ps", "-A", "-w").lines) {
-        if (line.starts_with("USER")) {
-          continue;
-        }
-        std::vector<std::string> cols;
-        boost::split(cols, line, boost::is_any_of(" \t"), boost::token_compress_on);
-        if (cols.size() >= 2 && cols.rbegin()->size() > 0 && cols.rbegin()->data()[0] != '[') {
-          std::cout << "'" << *cols.rbegin() << "'" << std::endl;
-        }
-      }
-    }
-  }
-  return 0;
+  ASSERT_TRUE(exists(adb_cmd));
+
+  ASSERT_TRUE(exists(boost::process::search_path("echo")));
+  ASSERT_TRUE(exists(boost::process::search_path("true")));
+  ASSERT_TRUE(exists(boost::process::search_path("false")));
+  ASSERT_FALSE(exists(boost::process::search_path("echoxxxxxxxxxxxxxxxxxxxxxxxxxx")));
+}
+
+TEST(ChildProcess, ExitCode) {
+  ASSERT_EQ(ChildProcess(boost::process::search_path("true")).exit_code(), 0);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("false")).exit_code(), 1);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("bash"), "-c", "exit 0").exit_code(), 0);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("bash"), "-c", "exit 1").exit_code(), 1);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("bash"), "-c", "exit 2").exit_code(), 2);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("bash"), "-c", "exit 128").exit_code(), 128);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("bash"), "-c", "exit 255").exit_code(), 255);
+  ASSERT_EQ(ChildProcess(boost::process::search_path("bash"), "-c", "exit 256").exit_code(), 0);
+}
+
+TEST(ChildProcess, Stdout) {
+  ASSERT_EQ(ChildProcess("echo 123").stdout_str(), "123\n");
+  ASSERT_EQ(ChildProcess("echo -n 123").stdout_str(), "123");
+  ASSERT_EQ(ChildProcess("echo -n 1\n2\n3").stdout_str(), "1\n2\n3");
+  ASSERT_EQ(ChildProcess("echo -n \n\n\n\n\n").stdout_str(), "\n\n\n\n\n");
+  ASSERT_EQ(ChildProcess("echo -n \r\r\r\r\r").stdout_str(), "\r\r\r\r\r");
+  ASSERT_EQ(ChildProcess("echo -n '      '").stdout_str(), "' '");
+  ASSERT_EQ(ChildProcess("echo").stdout_str(), "\n");
+  ASSERT_EQ(ChildProcess(boost::process::search_path("echo"), boost::process::args={"1", "2", "3"}).stdout_str(), "1 2 3\n");
+  ASSERT_EQ(ChildProcess(boost::process::search_path("echo"), "123").stdout_str(), "123\n");
+  ASSERT_EQ(ChildProcess(boost::process::search_path("echo"), "-n", "123").stdout_str(), "123");
+  ASSERT_EQ(ChildProcess(boost::process::search_path("echo"), "-n", "1\n2\n3\n").stdout_str(), "1\n2\n3\n");
+  ASSERT_EQ(ChildProcess(boost::process::search_path("echo"), "1\n2\n3\n").stdout_str(), "1\n2\n3\n\n");
+}
+
+TEST(ChildProcess, FirstLine) {
+  ASSERT_EQ(ChildProcess(boost::process::search_path("echo")).first_line(), "");
+  ASSERT_EQ(ChildProcess("echo 123").first_line(), "123");
+  ASSERT_EQ(ChildProcess("echo \n123").first_line(), "123");
+  ASSERT_EQ(ChildProcess("echo \n123\n\n").first_line(), "123");
+  ASSERT_EQ(ChildProcess("echo \n\n\n\n\n\n\n123").first_line(), "123");
+}
+
+TEST(Run, ExitCode) {
+  ASSERT_EQ(::Run(boost::process::search_path("true")).exit_code(), 0);
+  ASSERT_EQ(::Run(boost::process::search_path("false")).exit_code(), 1);
+
+  ASSERT_EQ(::Run(boost::process::search_path("echo"), "1 2 3", boost::process::std_out > boost::process::null).exit_code(), 0);
+
+  ASSERT_EQ(::Run(boost::process::search_path("bash"), "-c", "exit 0").exit_code(), 0);
+  ASSERT_EQ(::Run(boost::process::search_path("bash"), "-c", "exit 1").exit_code(), 1);
+  ASSERT_EQ(::Run(boost::process::search_path("bash"), "-c", "exit 255").exit_code(), 255);
+  ASSERT_EQ(::Run(boost::process::search_path("bash"), "-c", "exit 256").exit_code(), 0);
+
+
+  ASSERT_EQ(::Run(boost::process::search_path("bash"), boost::process::args={"-c", "exit 1"}).exit_code(), 1);
+
+
+  // ASSERT_EQ(::Run(boost::process::search_path("sleep"), "3").exit_code(), 0);
+
+}
+
+int main(int argc, char* argv[]) {
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
 
