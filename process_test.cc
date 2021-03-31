@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include "adb_path.h"
+
 // TODO:
 // 1. command not exists
 // 2. process ternimal
@@ -50,7 +52,7 @@ public:
     return std::string(&*(first_line_range.begin()), ranges::distance(first_line_range));
   }
   int exit_code() { return _exit_code; }
-  auto& all_lines_range() {
+  auto& all_lines_range() & {
     return this->_all_lines_range;
   }
 private:
@@ -88,20 +90,27 @@ private:
   int _exit_code;
 };
 
+std::vector<boost::filesystem::path> all_adb_path();
+
+int get_adbd_version();
+std::string get_adb_version(boost::filesystem::path const&);
 TEST(CommandPath, CheckExists) {
-  auto adb_cmd = boost::process::search_path("adb");
-  const char* ADB_ENV = std::getenv("ADB");
-  if (ADB_ENV && std::strlen(ADB_ENV) > 0) {
-    adb_cmd = ADB_ENV;
+  auto adb_cmd = get_adb_path();
+
+  auto all_adbs = all_adb_path();
+
+  Adb adb;
+  std::cout << adb.path() << ": " << adb.version() << std::endl;
+
+  for (auto const& device: adb.devices()) {
+    std::cout << "device: " << device << std::endl;
   }
-  if (!exists(adb_cmd)) {
-#ifdef __linux__
-    adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Android" / "Sdk" / "platform-tools" / "adb";
-#endif
-#ifdef __apple__
-    adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Library" / "Android" / "sdk" / "platform-tools" / "adb";
-#endif
+
+  ASSERT_GT(all_adbs.size(), 0);
+  for (auto const& adb: all_adbs) {
+    std::cout << adb << ": " << get_adb_version(adb) << std::endl;
   }
+  std::cout << get_adbd_version() << std::endl;
 
   ASSERT_TRUE(exists(adb_cmd));
 
