@@ -9,6 +9,11 @@
 #include "adb_path.h"
 
 
+Adb GetDefaultAdb();
+Adb GetNewestAdb();
+Adb GetAdbFromPath();
+std::vector<Adb> GetAllAdbs();
+
 namespace {
 class ChildProcess {
 public:
@@ -60,10 +65,25 @@ private:
 }
 
 
-std::vector<boost::filesystem::path> all_adb_path() {
+std::vector<Adb> GetAllAdbFromPath() {
+  std::vector<Adb> adb_path;
+  std::vector<boost::filesystem::path> path = ::boost::this_process::path();
 
-  std::vector<boost::filesystem::path> adb_path;
+  for (const boost::filesystem::path & pp : path) {
+    if (pp.leaf() == "buildtools") { continue; }
+    auto p = pp / "adb";
+    boost::system::error_code ec;
+    bool file = boost::filesystem::is_regular_file(p, ec);
+    if (!ec && file && ::access(p.c_str(), X_OK) == 0) {
+      adb_path.push_back(Adb(p));
+    }
+  }
+  return adb_path;
+}
 
+std::vector<Adb> GetAllAdbs() {
+
+  std::vector<Adb> adb_path;
   auto home_dir = boost::filesystem::path(std::getenv("HOME"));
 #ifdef __linux__
   auto default_android_sdk = home_dir / "Android" / "Sdk";
@@ -81,30 +101,38 @@ std::vector<boost::filesystem::path> all_adb_path() {
     }
   }
 
-  std::vector<boost::filesystem::path> path = ::boost::this_process::path();
-  search_path.insert(search_path.end(), path.begin(), path.end());
-
   for (const boost::filesystem::path & pp : search_path) {
     if (pp.leaf() != "platform-tools") { continue; }
     auto p = pp / "adb";
     boost::system::error_code ec;
     bool file = boost::filesystem::is_regular_file(p, ec);
     if (!ec && file && ::access(p.c_str(), X_OK) == 0) {
-      adb_path.push_back(p);
+      adb_path.push_back(Adb(p));
     }
   }
+
+  auto adbsFromPath = GetAllAdbFromPath();
+  adb_path.insert(adb_path.end(), adbsFromPath.begin(), adbsFromPath.end());
   return adb_path;
 }
 
-boost::filesystem::path get_adb_path() {
-  auto all_adbs = all_adb_path();
+Adb GetDefaultAdb() {
+  auto all_adbs = GetAllAdbs();
   if (all_adbs.size() > 0 ) {
     return all_adbs[0];
   }
-  return "";
+  return Adb(boost::filesystem::path(""));
 }
 
-int get_adbd_version() {
+Adb GetNewestAdb() {
+  return Adb(boost::filesystem::path(""));
+}
+Adb GetAdbFromPath() {
+  return Adb(boost::filesystem::path(""));
+}
+
+
+int GetAdbdVersion() {
   int version = -1;
   try {
     using boost::asio::ip::tcp;
@@ -139,17 +167,8 @@ int get_adbd_version() {
   return version;
 }
 
-std::string get_adb_version(boost::filesystem::path const & adb) {
-  if (exists(adb) && 0 == ::access(adb.c_str(), X_OK)) {
-    ChildProcess adb_version_process(adb, "--version");
-    auto x{adb_version_process.first_line()};
-    return std::string(x.begin(), x.end());
-  }
-  return "";
-}
-
-
 int Adb::version() {
+  if (adb_version > 0) { return adb_version; }
   std::string_view prefix{"Android Debug Bridge version"};
   ChildProcess adb_version_process(adb_path, "--version");
   auto x{adb_version_process.first_line()};
@@ -159,11 +178,12 @@ int Adb::version() {
     if (versions.size() == 3) {
       return std::stoi(versions[2]);
     } else {
-      return -1;
+      adb_version = -1;
     }
   } else {
-    return -1;
+    adb_version = -1;
   }
+  return adb_version;
 }
 
 std::vector<std::string> Adb::devices() {

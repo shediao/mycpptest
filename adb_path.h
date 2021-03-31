@@ -3,11 +3,14 @@
 #define ADB_PATH
 #include <boost/filesystem.hpp>
 
-boost::filesystem::path get_adb_path();
-
 class Adb {
  public:
-  Adb():adb_path(get_adb_path()){ }
+  struct AdbShellResult {
+    int exit_code = 0;
+    std::string std_out;
+    std::string std_err;
+  };
+ public:
   Adb(boost::filesystem::path adb):adb_path(adb){ }
 
   int version();
@@ -18,15 +21,25 @@ class Adb {
   std::vector<std::string> devices();
   // template <typename... Args>
   // ChildProcess shell(Args&&... args) { return ChildProcess(adb_path, "shell", std::forward<Args>(args)...);  }
-  int run() { return 1; }
+  AdbShellResult shell() { return AdbShellResult{}; }
+  int shell_run() { return 1; }
 
   const boost::filesystem::path& path() {
     return adb_path;
   }
 
+  void set_execute_path(const boost::filesystem::path adb) { adb_path = adb; }
+
  private:
   boost::filesystem::path adb_path;
+  int adb_version = -1;
 };
+
+int GetAdbdVersion();
+Adb GetDefaultAdb();
+Adb GetNewestAdb();
+Adb GetAdbFromPath();
+std::vector<Adb> GetAllAdbs();
 
 
 

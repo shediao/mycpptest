@@ -14,7 +14,7 @@ TEST(Filesystem, Path) {
   ASSERT_TRUE(exists(home_dir));
   ASSERT_TRUE(exists(home_dir / "sources"));
   std::vector<std::string> files;
-  for (const auto& x: recursive_directory_iterator(home_dir / "sources" / "mycpptest")) {
+  for (const auto& x: recursive_directory_iterator(home_dir / "sources" / "range-v3")) {
     files.push_back(x.path().string());
   }
   std::cout << files.size() << std::endl;

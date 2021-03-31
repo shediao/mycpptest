@@ -92,27 +92,22 @@ private:
 
 std::vector<boost::filesystem::path> all_adb_path();
 
-int get_adbd_version();
-std::string get_adb_version(boost::filesystem::path const&);
 TEST(CommandPath, CheckExists) {
-  auto adb_cmd = get_adb_path();
+  //auto all_adbs = all_adb_path();
 
-  auto all_adbs = all_adb_path();
+  //Adb adb;
+  //std::cout << adb.path() << ": " << adb.version() << std::endl;
 
-  Adb adb;
-  std::cout << adb.path() << ": " << adb.version() << std::endl;
+  //for (auto const& device: adb.devices()) {
+  //  std::cout << "device: " << device << std::endl;
+  //}
 
-  for (auto const& device: adb.devices()) {
-    std::cout << "device: " << device << std::endl;
-  }
+  //ASSERT_GT(all_adbs.size(), 0);
+  //for (auto const& adb: all_adbs) {
+  //}
+  //std::cout << get_adbd_version() << std::endl;
 
-  ASSERT_GT(all_adbs.size(), 0);
-  for (auto const& adb: all_adbs) {
-    std::cout << adb << ": " << get_adb_version(adb) << std::endl;
-  }
-  std::cout << get_adbd_version() << std::endl;
-
-  ASSERT_TRUE(exists(adb_cmd));
+  //ASSERT_TRUE(exists(adb_cmd));
 
   ASSERT_TRUE(exists(boost::process::search_path("echo")));
   ASSERT_TRUE(exists(boost::process::search_path("true")));
