@@ -1,4 +1,5 @@
 
+#include <iterator>
 #include "adb_path.h"
 #include <gtest/gtest.h>
 
@@ -34,6 +35,29 @@ TEST(Adb, Shell) {
   ASSERT_EQ(r1.std_out , "xxxx");
   ASSERT_EQ(r1.std_err , "");
   ASSERT_EQ(r1.exit_code , 0);
+}
+
+TEST(Adb, PushAndPull) {
+  auto adb = GetDefaultAdb();
+  int ret = adb.push("./adb_push_test_data.txt", "/data/local/tmp/");
+  ASSERT_EQ(ret, 0);
+
+  ASSERT_EQ(adb.shell("test -f /data/local/tmp/adb_push_test_data.txt && echo -n yes || echo -n no").std_out, "yes");
+  ASSERT_EQ(adb.shell("cat", "/data/local/tmp/adb_push_test_data.txt").std_out, "1234567890\n");
+
+  boost::filesystem::path tmp("mytestfile.txt");
+  if (exists(tmp)) { remove(tmp); }
+  ASSERT_EQ(adb.pull("/data/local/tmp/adb_push_test_data.txt", tmp.c_str()), 0);
+
+  ASSERT_TRUE(exists(tmp));
+
+  std::ifstream input(tmp.c_str());
+  ASSERT_TRUE(input.is_open());
+  std::string pull_file_data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  ASSERT_EQ(pull_file_data, "1234567890\n");
+  remove(tmp);
+  adb.shell("test -f /data/local/tmp/adb_push_test_data.txt && rm -f /data/local/tmp/adb_push_test_data.txt");
+  ASSERT_EQ(adb.shell("test -f /data/local/tmp/adb_push_test_data.txt && echo -n yes || echo -n no").std_out, "no");
 }
 
 int main(int argc, char* argv[]) {
