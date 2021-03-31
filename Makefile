@@ -23,8 +23,11 @@ static_libs := ${BOOST_ROOT}/lib/libboost_filesystem.a
 
 .PHONY: all clean run
 
-run: process_test ranges_test filesystem_test
-	./process_test && ./filesystem_test && ./ranges_test
+run: process_test ranges_test filesystem_test adb_test
+	./process_test
+	./filesystem_test
+	./ranges_test
+	./adb_test
 
 all: process_test ranges_test filesystem_test
 
@@ -38,7 +41,7 @@ gtest_main.o : ${GTEST_ROOT}/src/gtest_main.cc
 
 process_test.o: process_test.cc
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-process_test: gtest-all.o process_test.o adb_path.o
+process_test: gtest-all.o process_test.o
 	${CXX} ${ldflags} $^ -o $@  ${static_libs}
 
 ranges_test.o: ranges_test.cc
@@ -53,3 +56,8 @@ filesystem_test: filesystem_test.o gtest-all.o gtest_main.o
 
 adb_path.o: adb_path.cc
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
+
+adb_test.o: adb_test.cc
+	${CXX} ${cflags} ${cxxflags} -c $< -o $@
+adb_test: gtest-all.o adb_test.o ./adb_path.o
+	${CXX} ${ldflags} $^ -o $@  ${static_libs}

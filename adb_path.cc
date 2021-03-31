@@ -3,16 +3,13 @@
 #include <boost/asio.hpp>
 #include <boost/array.hpp>
 
+#include <iostream>
 #include <string_view>
 #include <range/v3/all.hpp>
 
 #include "adb_path.h"
 
 
-Adb GetDefaultAdb();
-Adb GetNewestAdb();
-Adb GetAdbFromPath();
-std::vector<Adb> GetAllAdbs();
 
 namespace {
 class ChildProcess {
@@ -125,20 +122,36 @@ Adb GetDefaultAdb() {
 }
 
 Adb GetNewestAdb() {
+  auto all_adbs = GetAllAdbs();
+  if (all_adbs.size() > 0 ) {
+    std::sort(all_adbs.begin(), all_adbs.end(), [](Adb& l, Adb& r) { return l.version() > r.version(); } );
+    return all_adbs[0];
+  }
   return Adb(boost::filesystem::path(""));
 }
 Adb GetAdbFromPath() {
+  std::vector<boost::filesystem::path> path = ::boost::this_process::path();
+
+  for (const boost::filesystem::path & pp : path) {
+    if (pp.leaf() == "buildtools") { continue; }
+    auto p = pp / "adb";
+    boost::system::error_code ec;
+    bool file = boost::filesystem::is_regular_file(p, ec);
+    if (!ec && file && ::access(p.c_str(), X_OK) == 0) {
+      return Adb(p);
+    }
+  }
   return Adb(boost::filesystem::path(""));
 }
 
 
-int GetAdbdVersion() {
+int GetAdbdVersion(int port) {
   int version = -1;
   try {
     using boost::asio::ip::tcp;
     boost::asio::io_service io;
     tcp::socket socket(io);
-    tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 5038);
+    tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), port);
     socket.connect(endpoint);
 
     // write
@@ -148,20 +161,26 @@ int GetAdbdVersion() {
 
     // read
     boost::array<char, 128> buf;
+    std::vector<char> response;
     boost::system::error_code error;
     size_t len = socket.read_some(boost::asio::buffer(buf), error);
+    while (len > 0) {
+      if (error) return version;
+      response.insert(response.end(), buf.data(), buf.data() + len);
+      len = socket.read_some(boost::asio::buffer(buf), error);
+    }
 
-    if (error) return version;
-
-    std::string_view result(buf.data(), len);
+    std::string_view result(response.data(), response.size());
 
     std::string_view start = "OKAY0004";
     if (result.find(start.data()) == 0) {
       result = result.substr(start.size());
       version = std::stoi(std::string(result.data(), result.length()), 0, 16);
+    } else {
+      std::cerr << "adbd response:" << result << std::endl;
     }
   } catch (std::exception& e) {
-    // std::cerr << e.what() << std::endl;
+    std::cerr << e.what() << std::endl;
     version = -1;
   }
   return version;
