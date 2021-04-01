@@ -11,8 +11,17 @@ struct AdbShellResult {
 };
 class Adb {
  public:
- public:
-  Adb(boost::filesystem::path adb):adb_path(adb){ }
+  explicit Adb(boost::filesystem::path adb):adb_path(adb){ }
+
+
+  void start_server();
+  void kill_server();
+
+  void connect(std::string device);
+  void disconnect(std::string device);
+
+  int exec_out();
+  int run_as();
 
   int version();
 
@@ -69,6 +78,8 @@ class Adb {
  private:
   boost::filesystem::path adb_path;
   int adb_version = -1;
+  std::string serial;
+  int port = 5037;
 };
 
 int GetAdbdVersion(int port);
@@ -76,5 +87,23 @@ Adb GetDefaultAdb();
 Adb GetNewestAdb();
 Adb GetAdbFromPath();
 std::vector<Adb> GetAllAdbs();
+
+class AndroidDevice {
+ public:
+  // explicit AndroidDevice(){};
+  void install();
+  void uninstall();
+  void list3partypackages();
+  void listpackages();
+  void start_activite();
+  void stop_activite();
+  int getPid();
+
+
+ private:
+  std::string serial;
+  Adb adb;
+};
+
 
 #endif  // ADB_PATH
