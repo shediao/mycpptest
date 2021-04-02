@@ -10,12 +10,22 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <range/v3/all.hpp>
 
+
+//TODO:
+// 1. 单例守护进程
+// 2. 写syslog
+// 3. 支持设置连接的adb server host和port(localhost:5037)
+// 4. adb server没有启动的情况处理
+// 5. 
+
+
 #define RUN_IN_DAEMON 1
 
 #if RUN_IN_DAEMON
 bool g_daemon_process = false;
 #endif
 bool g_verbose = false;
+
 
 void die(int exit_code, std::string msg) {
   std::cerr << msg << std::endl;
@@ -127,12 +137,12 @@ void execute_process_for_device(std::vector<char> data, std::vector<std::string>
   }
 }
 
-void TrackAndroidDevice(int port, std::vector<std::string> const& commands) {
+void TrackAndroidDevice(std::string const& host, int port, std::vector<std::string> const& commands) {
   try {
     using boost::asio::ip::tcp;
     boost::asio::io_service io;
     tcp::socket socket(io);
-    tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), port);
+    tcp::endpoint endpoint(boost::asio::ip::address::from_string(host), port);
     socket.connect(endpoint);
 
     // write
@@ -265,6 +275,6 @@ int main(int argc, char* const argv[]) {
   if (command_index < argc) {
     commands.insert(commands.end(), argv + command_index, argv + argc);
   }
-  TrackAndroidDevice(5037, commands);
+  TrackAndroidDevice("127.0.0.1", 5037, commands);
   return 0;
 }
