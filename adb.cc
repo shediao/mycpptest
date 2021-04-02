@@ -314,36 +314,3 @@ std::vector<std::string> getAndroidDevices(int port) {
   return devices;
 }
 
-/*
-void TrackAndroidDevice(int port) {
-  try {
-    using boost::asio::ip::tcp;
-    boost::asio::io_service io;
-    tcp::socket socket(io);
-    tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), port);
-    socket.connect(endpoint);
-
-    // write
-    std::string_view request_msg("0012host:track-devices");
-    boost::system::error_code ignored_error;
-    boost::asio::write(socket, boost::asio::buffer(request_msg), ignored_error);
-
-    // read
-    boost::array<char, 128> buf;
-    std::vector<char> response_data;
-    boost::system::error_code error;
-    // TODO: boost::asio::read
-    std::size_t read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(4), error);
-    if (error) {
-      return;
-    }
-
-    if (std::string_view(buf.data(), 4) != "OKAY" ) {
-      std::cerr << "adbd response_data:" << std::string_view(buf.data(), buf.size()) << std::endl;
-      return;
-    }
-  } catch (std::exception& e) {
-    std::cerr << e.what() << std::endl;
-  }
-}
-*/

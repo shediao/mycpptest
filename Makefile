@@ -29,7 +29,7 @@ run: process_test ranges_test filesystem_test adb_test
 	./ranges_test
 	./adb_test
 
-all: process_test ranges_test filesystem_test
+all: process_test ranges_test filesystem_test adbauto
 
 clean:
 	find . -name '*.o' -delete
@@ -61,3 +61,9 @@ adb_test.o: adb_test.cc
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
 adb_test: gtest-all.o adb_test.o ./adb.o
 	${CXX} ${ldflags} $^ -o $@  ${static_libs}
+
+adbauto.o: adbauto.cc
+	${CXX} ${cflags} ${cxxflags} -c $< -o $@
+
+adbauto: adbauto.o
+	${CXX} ${ldflags} $^ -o $@ ${static_libs}

@@ -142,6 +142,7 @@ TEST(Run, ExitCode) {
 
 
   ASSERT_EQ(::Run(boost::process::search_path("bash"), boost::process::args={"-c", "exit 1"}).exit_code(), 1);
+  ASSERT_EQ(::Run(boost::process::search_path("echo"), "1", boost::process::args+={"2", "3"}).exit_code(), 0);
 
 
   // ASSERT_EQ(::Run(boost::process::search_path("sleep"), "3").exit_code(), 0);
