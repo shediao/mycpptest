@@ -7,11 +7,12 @@
 #include <string_view>
 #include <range/v3/all.hpp>
 
-#include "adb_path.h"
+#include "adb.h"
 
 
 
 namespace {
+bool isnewline(char x) { return x == '\n' || x == '\r'; }
 class ChildProcess {
 public:
   template <typename... Args>
@@ -21,8 +22,7 @@ public:
     child(std::forward<Args>(args)..., boost::process::std_out > stdout_stream, boost::process::std_err > stderr_stream),
     stdout_buf(std::istreambuf_iterator<char>(stdout_stream), std::istreambuf_iterator<char>()),
     stderr_buf(std::istreambuf_iterator<char>(stderr_stream), std::istreambuf_iterator<char>()),
-    _exit_code(-1),
-    _all_lines_range(stdout_buf | ranges::views::trim((int(*)(int))&std::isspace) | ranges::views::split_when(&isnewline))
+    _exit_code(-1)
     { if (child.valid()) { child.wait(); _exit_code = child.exit_code(); } }
 
   ChildProcess() = delete;
@@ -32,24 +32,42 @@ public:
   ChildProcess(ChildProcess&&) = default;
   ChildProcess& operator=(ChildProcess&&) = delete;
 
-  std::string_view stdout_str() { return std::string_view(stdout_buf.data(), stdout_buf.size()); }
-  std::string_view stderr_str() { return std::string_view(stderr_buf.data(), stderr_buf.size()); }
-  const std::vector<char>& stdout_raw() { return stdout_buf; }
-  const std::vector<char>& stderr_raw() { return stderr_buf; }
+  std::string_view stdout_str() & { return std::string_view(stdout_buf.data(), stdout_buf.size()); }
+  std::string_view stderr_str() & { return std::string_view(stderr_buf.data(), stderr_buf.size()); }
+  const std::vector<char>& stdout_raw() & { return stdout_buf; }
+  const std::vector<char>& stderr_raw() & { return stderr_buf; }
   std::string_view first_line() & {
-    decltype(auto) first_line_range = *_all_lines_range.begin();
-    return std::string_view(&*(first_line_range.begin()), ranges::distance(first_line_range));
+    auto first_non_space = std::find_if_not(stdout_buf.begin(), stdout_buf.end(), (int(*)(int))&std::isspace);
+    auto first_newline = std::find_if(first_non_space, stdout_buf.end(), &isnewline);
+    return std::string_view(&*first_non_space, std::distance(first_non_space, first_newline));
   }
   std::string first_line() && {
-    decltype(auto) first_line_range = *_all_lines_range.begin();
-    return std::string(&*(first_line_range.begin()), ranges::distance(first_line_range));
+    auto ret = this->first_line();
+    return std::string(ret.begin(), ret.end());
   }
   int exit_code() { return _exit_code; }
-  auto& all_lines_range() & {
-    return this->_all_lines_range;
+
+  auto all_lines() {
+      std::string_view data(stdout_buf.data(), stdout_buf.size());
+      return std::string_view(stdout_buf.data(), stdout_buf.size())
+          | ranges::views::split_when(&isnewline)
+          | ranges::views::transform([](auto&& rg) {
+              return std::string_view(&*rg.begin(), ranges::distance(rg));
+            });
+  }
+  auto all_columns() {
+      std::string_view data(stdout_buf.data(), stdout_buf.size());
+      return std::string_view(stdout_buf.data(), stdout_buf.size())
+          | ranges::views::split_when(&isnewline)
+          | ranges::views::transform([](auto&& rg){
+              return std::string_view(&*rg.begin(), ranges::distance(rg))
+                | ranges::views::split_when((int(*)(int))&std::isspace)
+                | ranges::views::transform([](auto&& rg) {
+                    return std::string_view(&*rg.begin(), ranges::distance(rg));
+                  }) ;
+            });
   }
 private:
-  static bool isnewline(char x) { return x == '\n' || x == '\r'; }
 private:
   boost::process::ipstream stdout_stream;
   boost::process::ipstream stderr_stream;
@@ -57,7 +75,6 @@ private:
   std::vector<char> stdout_buf;
   std::vector<char> stderr_buf;
   int _exit_code;
-  decltype(stdout_buf | ranges::views::trim((int(*)(int))nullptr) | ranges::views::split_when((bool(*)(char))nullptr)) _all_lines_range;
 };
 }
 
@@ -160,25 +177,29 @@ int GetAdbdVersion(int port) {
     boost::asio::write(socket, boost::asio::buffer(version_msg), ignored_error);
 
     // read
-    boost::array<char, 128> buf;
-    std::vector<char> response;
+    boost::array<char, 64> buf;
+    std::vector<char> response_data;
     boost::system::error_code error;
-    size_t len = socket.read_some(boost::asio::buffer(buf), error);
-    while (len > 0) {
-      if (error) return version;
-      response.insert(response.end(), buf.data(), buf.data() + len);
-      len = socket.read_some(boost::asio::buffer(buf), error);
+    // TODO: boost::asio::read
+    std::size_t read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(8), error);
+    if (error) {
+      return -1;
     }
 
-    std::string_view result(response.data(), response.size());
-
-    std::string_view start = "OKAY0004";
-    if (result.find(start.data()) == 0) {
-      result = result.substr(start.size());
-      version = std::stoi(std::string(result.data(), result.length()), 0, 16);
-    } else {
-      std::cerr << "adbd response:" << result << std::endl;
+    if (std::string_view(buf.data(), 4) != "OKAY" ) {
+      std::cerr << "adbd response_data:" << std::string_view(buf.data(), buf.size()) << std::endl;
+      return -1;
     }
+    int data_len = std::stoi(std::string(buf.data() + 4, 4), 0, 16);
+
+    response_data.insert(response_data.end(), buf.data() + 8, buf.data() + read_len);
+
+    while ((read_len = socket.read_some(boost::asio::buffer(buf), error)) > 0) {
+      if (error) return -1;
+      response_data.insert(response_data.end(), buf.data(), buf.data() + read_len);
+      if (response_data.size() >= data_len) { break; }
+    }
+    return std::stoi(std::string(response_data.data(), response_data.size()), 0, 16);
   } catch (std::exception& e) {
     std::cerr << e.what() << std::endl;
     version = -1;
@@ -206,20 +227,123 @@ int Adb::version() {
 }
 
 std::vector<std::string> Adb::devices() {
-  ChildProcess adb_version_process(adb_path, "devices", "-l");
-  auto all_lines = adb_version_process.all_lines_range()
-    | ranges::to<std::vector<std::string>>;
-
+  // ChildProcess adb_version_process(adb_path, "devices", "-l");
+  ChildProcess adb_version_process(adb_path, "devices");
   std::vector<std::string> android_devices;
-  if (all_lines.size() == 0 || all_lines[0].find("List of devices attached") != 0) {
-    return android_devices;
-  }
-  for (auto const& d: all_lines | ranges::views::drop(1)) {
-    auto x = d | ranges::views::split_when((int(*)(int))&std::isspace) | ranges::to<std::vector<std::string>>;
-    if (x.size() > 1) {
-      android_devices.push_back(x[0]);
+
+  for (auto&& line: adb_version_process.all_columns()) {
+    auto col = line.begin();
+    if (col != line.end()) {
+      std::string_view serial(*col);
+      if (++col != line.end()) {
+        std::string_view status(*col);
+        if (status == "device") {
+          android_devices.emplace_back(serial.data(), serial.length());
+        }
+      }
     }
   }
   return android_devices;
 }
 
+std::vector<std::string> getAndroidDevices(int port) {
+  std::vector<std::string> devices;
+  try {
+    using boost::asio::ip::tcp;
+    boost::asio::io_service io;
+    tcp::socket socket(io);
+    tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), port);
+    socket.connect(endpoint);
+
+    // write
+    std::string version_msg {"000Chost:devices"};
+    boost::system::error_code ignored_error;
+    boost::asio::write(socket, boost::asio::buffer(version_msg), ignored_error);
+
+    // OKEY[4N][data]
+    // OKEY****------------
+    // read
+    boost::array<char, 128> buf;
+    std::vector<char> response_data;
+    boost::system::error_code error;
+    // TODO: boost::asio::read
+    std::size_t read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(8), error);
+    if (error) {
+        return devices;
+    }
+
+    if (std::string_view(buf.data(), 4) != "OKAY" ) {
+      std::cerr << "adbd response_data:" << std::string_view(buf.data(), buf.size()) << std::endl;
+      return devices;
+    }
+    int data_len = std::stoi(std::string(buf.data() + 4, 4), 0, 16);
+
+    response_data.insert(response_data.end(), buf.data() + 8, buf.data() + read_len);
+
+    while ((read_len = socket.read_some(boost::asio::buffer(buf), error)) > 0) {
+      if (error) return devices;
+      response_data.insert(response_data.end(), buf.data(), buf.data() + read_len);
+      if (response_data.size() >= data_len) { break; }
+    }
+
+    std::string_view devices_info(response_data.data(), response_data.size());
+    auto devices_view = devices_info
+        | ranges::views::split_when(&isnewline)
+        | ranges::views::transform([](auto&& rg){
+            return std::string_view(&*rg.begin(), ranges::distance(rg))
+              | ranges::views::split_when((int(*)(int))&std::isspace)
+              | ranges::views::transform([](auto&& rg) {
+                  return std::string_view(&*rg.begin(), ranges::distance(rg));
+                }) ;
+          });
+    for (auto const& line: devices_view) {
+      auto col = line.begin();
+      if (col != line.end()) {
+        std::string_view serial(*col);
+        if (++col != line.end()) {
+          std::string_view status(*col);
+          if (status == "device") {
+            devices.emplace_back(serial.data(), serial.length());
+          }
+        }
+      }
+    }
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+  }
+  return devices;
+}
+
+/*
+void TrackAndroidDevice(int port) {
+  try {
+    using boost::asio::ip::tcp;
+    boost::asio::io_service io;
+    tcp::socket socket(io);
+    tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), port);
+    socket.connect(endpoint);
+
+    // write
+    std::string_view request_msg("0012host:track-devices");
+    boost::system::error_code ignored_error;
+    boost::asio::write(socket, boost::asio::buffer(request_msg), ignored_error);
+
+    // read
+    boost::array<char, 128> buf;
+    std::vector<char> response_data;
+    boost::system::error_code error;
+    // TODO: boost::asio::read
+    std::size_t read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(4), error);
+    if (error) {
+      return;
+    }
+
+    if (std::string_view(buf.data(), 4) != "OKAY" ) {
+      std::cerr << "adbd response_data:" << std::string_view(buf.data(), buf.size()) << std::endl;
+      return;
+    }
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+  }
+}
+*/

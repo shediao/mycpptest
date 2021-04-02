@@ -54,10 +54,10 @@ filesystem_test.o: filesystem_test.cc
 filesystem_test: filesystem_test.o gtest-all.o gtest_main.o
 	${CXX} ${ldflags} $^ -o $@  ${static_libs}
 
-adb_path.o: adb_path.cc
+adb.o: adb.cc
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
 
 adb_test.o: adb_test.cc
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-adb_test: gtest-all.o adb_test.o ./adb_path.o
+adb_test: gtest-all.o adb_test.o ./adb.o
 	${CXX} ${ldflags} $^ -o $@  ${static_libs}

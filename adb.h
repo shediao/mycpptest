@@ -16,6 +16,9 @@ class Adb {
 
   void start_server();
   void kill_server();
+  void forward();
+  void get_stat();
+  void get_serialno();
 
   void connect(std::string device);
   void disconnect(std::string device);
@@ -68,12 +71,9 @@ class Adb {
   }
 
   int shell_run() { return 1; }
-
-  const boost::filesystem::path& path() {
-    return adb_path;
-  }
-
-  void set_execute_path(const boost::filesystem::path adb) { adb_path = adb; }
+  const boost::filesystem::path& path() { return adb_path; }
+  void set_execute_path(const boost::filesystem::path& adb) { adb_path = adb; }
+  void set_device(std::string device) { serial = std::move(device); }
 
  private:
   boost::filesystem::path adb_path;
@@ -87,23 +87,5 @@ Adb GetDefaultAdb();
 Adb GetNewestAdb();
 Adb GetAdbFromPath();
 std::vector<Adb> GetAllAdbs();
-
-class AndroidDevice {
- public:
-  // explicit AndroidDevice(){};
-  void install();
-  void uninstall();
-  void list3partypackages();
-  void listpackages();
-  void start_activite();
-  void stop_activite();
-  int getPid();
-
-
- private:
-  std::string serial;
-  Adb adb;
-};
-
 
 #endif  // ADB_PATH

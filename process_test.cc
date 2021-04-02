@@ -10,8 +10,6 @@
 
 #include <gtest/gtest.h>
 
-#include "adb_path.h"
-
 // TODO:
 // 1. command not exists
 // 2. process ternimal
@@ -90,25 +88,7 @@ private:
   int _exit_code;
 };
 
-std::vector<boost::filesystem::path> all_adb_path();
-
 TEST(CommandPath, CheckExists) {
-  //auto all_adbs = all_adb_path();
-
-  //Adb adb;
-  //std::cout << adb.path() << ": " << adb.version() << std::endl;
-
-  //for (auto const& device: adb.devices()) {
-  //  std::cout << "device: " << device << std::endl;
-  //}
-
-  //ASSERT_GT(all_adbs.size(), 0);
-  //for (auto const& adb: all_adbs) {
-  //}
-  //std::cout << get_adbd_version() << std::endl;
-
-  //ASSERT_TRUE(exists(adb_cmd));
-
   ASSERT_TRUE(exists(boost::process::search_path("echo")));
   ASSERT_TRUE(exists(boost::process::search_path("true")));
   ASSERT_TRUE(exists(boost::process::search_path("false")));

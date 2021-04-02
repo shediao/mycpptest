@@ -1,7 +1,9 @@
 
 #include <iterator>
-#include "adb_path.h"
 #include <gtest/gtest.h>
+
+
+#include "adb.h"
 
 auto home_dir = boost::filesystem::path(std::getenv("HOME"));
 #ifdef __linux__
@@ -27,6 +29,11 @@ TEST(Adb, GetAdbFromPath) {
 }
 TEST(Adb, GetAllAdbs) {
   ASSERT_GT(GetAllAdbs().size(), 0);
+}
+
+TEST(Adb, Version) {
+  auto adb = GetDefaultAdb();
+  ASSERT_GT(adb.version(),39);
 }
 
 TEST(Adb, Shell) {
@@ -58,6 +65,15 @@ TEST(Adb, PushAndPull) {
   remove(tmp);
   adb.shell("test -f /data/local/tmp/adb_push_test_data.txt && rm -f /data/local/tmp/adb_push_test_data.txt");
   ASSERT_EQ(adb.shell("test -f /data/local/tmp/adb_push_test_data.txt && echo -n yes || echo -n no").std_out, "no");
+}
+
+std::vector<std::string> getAndroidDevices(int port);
+TEST(Adb, devices) {
+  auto adb = GetDefaultAdb();
+  ASSERT_EQ(adb.devices(), getAndroidDevices(5037));
+  for (auto&& device:getAndroidDevices(5037)) {
+    std::cout << "device:" << device << std::endl;
+  }
 }
 
 int main(int argc, char* argv[]) {
