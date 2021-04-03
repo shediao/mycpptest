@@ -16,7 +16,7 @@
 // 2. 写syslog
 // 3. 支持设置连接的adb server host和port(localhost:5037)
 // 4. adb server没有启动的情况处理
-// 5. 
+// 5. adb server终止的情况
 
 
 #define RUN_IN_DAEMON 1
@@ -63,6 +63,18 @@ void usage() {
   std::cout << " 4 adb -s $android_device shell setprop delay 250\n";
   std::cout << " 5 notify-send \"android device online: $android_device\" # 桌面通知Android连上\n";
   std::cout << " 6 scrcpy -s $android_device # 桌面投屏显示Android手机截面\n";
+  std::cout << "\n";
+  std::cout << "TODO:\n";
+  std::cout << " 1. 单例运行守护进程\n";
+  std::cout << " 2. 守护进程日志写入syslog\n";
+  std::cout << " 3. 自动重连adb server\n";
+  std::cout << " 4. 可指定adb server的host,port\n";
+  std::cout << " 5. \n";
+  std::cout << "\n";
+  std::cout << "已知问题:\n";
+  std::cout << " 1. adb server停止或重启, adbauto退出\n";
+  std::cout << "\n";
+  std::cout << "\n";
   std::cout << std::endl;
 
 }
