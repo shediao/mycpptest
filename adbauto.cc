@@ -10,14 +10,10 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <range/v3/all.hpp>
 
-
 //TODO:
 // 1. 单例守护进程
 // 2. 写syslog
 // 3. 支持设置连接的adb server host和port(localhost:5037)
-// 4. adb server没有启动的情况处理
-// 5. adb server终止的情况
-
 
 #define RUN_IN_DAEMON 1
 
@@ -25,7 +21,7 @@
 bool g_daemon_process = false;
 #endif
 bool g_verbose = false;
-
+int g_sleep_time = 1;
 
 void die(int exit_code, std::string msg) {
   std::cerr << msg << std::endl;
@@ -64,19 +60,8 @@ void usage() {
   std::cout << " 5 notify-send \"android device online: $android_device\" # 桌面通知Android连上\n";
   std::cout << " 6 scrcpy -s $android_device # 桌面投屏显示Android手机截面\n";
   std::cout << "\n";
-  std::cout << "TODO:\n";
-  std::cout << " 1. 单例运行守护进程\n";
-  std::cout << " 2. 守护进程日志写入syslog\n";
-  std::cout << " 3. 自动重连adb server\n";
-  std::cout << " 4. 可指定adb server的host,port\n";
-  std::cout << " 5. \n";
-  std::cout << "\n";
-  std::cout << "已知问题:\n";
-  std::cout << " 1. adb server停止或重启, adbauto退出\n";
-  std::cout << "\n";
   std::cout << "\n";
   std::cout << std::endl;
-
 }
 
 void print_version() {
@@ -155,6 +140,7 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
     boost::asio::io_service io;
     tcp::socket socket(io);
     tcp::endpoint endpoint(boost::asio::ip::address::from_string(host), port);
+    boost::system::error_code error;
     socket.connect(endpoint);
 
     // write
@@ -165,8 +151,6 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
     // read
     std::array<char, 128> buf;
     std::vector<char> response_data;
-    boost::system::error_code error;
-    // TODO: boost::asio::read
     std::size_t read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(4), error);
     if (error) {
       return;
@@ -176,6 +160,8 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
       std::cerr << "adbd response_data:" << std::string_view(buf.data(), buf.size()) << std::endl;
       return;
     }
+
+    g_sleep_time = 1;
 
     if (read_len > 4) {
       response_data.insert(response_data.end(), buf.data() + 4, buf.data() + read_len);
@@ -200,7 +186,7 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
       }
     }
   } catch (std::exception& e) {
-    std::cerr << e.what() << std::endl;
+    std::cerr << host << ":" << port << " " << e.what() << std::endl;
   }
 }
 
@@ -287,6 +273,14 @@ int main(int argc, char* const argv[]) {
   if (command_index < argc) {
     commands.insert(commands.end(), argv + command_index, argv + argc);
   }
-  TrackAndroidDevice("127.0.0.1", 5037, commands);
-  return 0;
+  while (true) {
+    TrackAndroidDevice("127.0.0.1", 5037, commands);
+    if (g_sleep_time < 60) {
+      g_sleep_time = g_sleep_time + 1;
+    } else {
+      g_sleep_time = 60;
+    }
+    sleep(g_sleep_time);
+  }
+  return 1;
 }
