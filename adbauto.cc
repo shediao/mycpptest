@@ -7,8 +7,8 @@
 
 #include <boost/process.hpp>
 #include <boost/asio.hpp>
-#include <boost/algorithm/string/replace.hpp>
-#include <range/v3/all.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/utility/string_ref.hpp>
 
 //TODO:
 // 1. 单例守护进程
@@ -78,59 +78,99 @@ void print_vector_string(std::ostream& out, std::vector<std::string> const& vstr
 
 bool isnewline(char x) { return x == '\n' || x == '\r'; }
 
-void execute_process_for_device(std::vector<char> data, std::vector<std::string> const& commands) {
-  std::string_view devices_info(data.data(), data.size());
-  auto devices_view = devices_info
-      | ranges::views::split_when(&isnewline)
-      | ranges::views::transform([](auto&& rg){
-          return std::string_view(&*rg.begin(), ranges::distance(rg))
-            | ranges::views::split_when((int(*)(int))&std::isspace)
-            | ranges::views::transform([](auto&& rg) {
-                return std::string_view(&*rg.begin(), ranges::distance(rg));
-              }) ;
-        });
-  for (auto const& line: devices_view) {
-    auto col = line.begin();
-    if (col != line.end()) {
-      std::string_view serial(*col);
-      if (++col != line.end()) {
-        std::string_view status(*col);
-        if (status == "device") {
-          if (commands.size() == 0) {
-            std::cout << serial << " is online!" << std::endl;
-          } else {
-            std::vector<std::string> replace_arguments;
-            for (auto i = std::next(commands.begin(), 1); i != commands.end(); ++i) {
-              replace_arguments.push_back(boost::algorithm::replace_all_copy(*i, "{}", serial));
-            }
-            std::string command = boost::algorithm::replace_all_copy(commands[0], "{}", serial);
+void execute_process_for_device(std::vector<char> data, std::vector<std::string> const& commands, std::vector<std::string> &online_devices, std::vector<std::string> &offline_devices) {
+  // std::cout << "data:'" << std::string_view(data.data(), data.size()) << "'" << std::endl;
+  boost::string_ref devices_info(data.data(), data.size());
+  std::vector<std::string> devices_view;
+  boost::algorithm::split(devices_view, devices_info, boost::algorithm::is_any_of("\n"), boost::token_compress_on);
 
-            boost::filesystem::path cmd("");
-            if (command.find('/') != std::string::npos) {
-              cmd = boost::filesystem::path(command);
-              if (g_verbose) { std::cout << cmd << " "; print_vector_string(std::cout, replace_arguments); }
-              boost::process::child child(cmd, boost::process::args=replace_arguments);
-              child.detach();
-            } else {
-              cmd = boost::process::search_path(command);
-              if (!exists(cmd) || command.find('=') != std::string::npos) {
-                std::string shell_str = command;
-                for (auto const& i: replace_arguments) {
-                  shell_str = shell_str + " " + i;
-                }
-                if (g_verbose) { std::cout << "bash -c '" << shell_str << "'" << std::endl; }
-                boost::process::child child(boost::process::search_path("bash"), "-c", boost::process::args+=shell_str);
-                child.detach();
-              } else {
-                if (g_verbose) { std::cout << cmd << " "; print_vector_string(std::cout, replace_arguments); }
-                boost::process::child child(cmd, boost::process::args=replace_arguments);
-                child.detach();
-              }
-            }
+  std::vector<std::string> current_online_devices;
+  std::vector<std::string> current_offline_devices;
+
+  for (auto const& line: devices_view) {
+    if (line.size() ==0) continue;
+    std::vector<std::string> cols;
+    boost::algorithm::split(cols, line,  boost::algorithm::is_any_of(" \t"), boost::token_compress_on);
+    if (cols.size() == 2) {
+      auto& serial = cols[0];
+      auto& status = cols[1];
+      if (status == "device") {
+        current_online_devices.push_back(std::string(serial.data(), serial.length()));
+      } else if (status == "offline") {
+        current_offline_devices.push_back(std::string(serial.data(), serial.length()));
+      }
+    }
+  }
+
+  std::vector<std::string> disconnect_devices;
+  std::vector<std::string> connect_devices;
+  if (current_online_devices.size() > online_devices.size()) {
+    for (auto const& d : current_online_devices) {
+      if (std::find(online_devices.begin(), online_devices.end(), d) == online_devices.end()) {
+        connect_devices.push_back(d);
+      }
+    }
+  } else if (current_online_devices.size() < online_devices.size()) {
+    for (auto const& d : online_devices) {
+      if (std::find(current_online_devices.begin(), current_online_devices.end(), d) == current_online_devices.end()) {
+        disconnect_devices.push_back(d);
+      }
+    }
+  }
+
+  // std::cout << "\n\n\n===========================" << std::endl;
+  // std::cout << "data: " << devices_info << std::endl;
+  // std::cout << "=====" << std::endl;
+  // std::cout << "pre online devices: " << boost::algorithm::join(online_devices, ", ") << std::endl;
+  // std::cout << "pre offline devices: " << boost::algorithm::join(offline_devices, ", ") << std::endl;
+  // std::cout << "current online devices:" << boost::algorithm::join(current_online_devices, ", ") << std::endl;
+  // std::cout << "current offline devices:" << boost::algorithm::join(current_offline_devices, ", ") << std::endl;
+  // std::cout << "connect devices : " << boost::algorithm::join(connect_devices, ", ") << std::endl;
+  // std::cout << "disconnect devices: " << boost::algorithm::join(disconnect_devices, ", ") << std::endl;
+  // std::cout << "=====" << std::endl;
+
+  online_devices = current_online_devices;
+  offline_devices = current_offline_devices;
+
+
+  for (auto const &serial: disconnect_devices) {
+    std::cout << serial << " 下线" << std::endl;
+  }
+  for (auto const &serial: connect_devices) {
+    std::cout << serial << " 上线" << std::endl;
+    if (commands.size() > 0) {
+      std::vector<std::string> replace_arguments;
+      for (auto i = std::next(commands.begin(), 1); i != commands.end(); ++i) {
+        replace_arguments.push_back(boost::algorithm::replace_all_copy(*i, "{}", serial));
+      }
+      std::string command = boost::algorithm::replace_all_copy(commands[0], "{}", serial);
+
+      boost::filesystem::path cmd("");
+      if (command.find('/') != std::string::npos) {
+        cmd = boost::filesystem::path(command);
+        if (g_verbose) { std::cout << cmd << " "; print_vector_string(std::cout, replace_arguments); }
+        boost::process::child child(cmd, boost::process::args=replace_arguments);
+        child.detach();
+      } else {
+        cmd = boost::process::search_path(command);
+        if (!exists(cmd) || command.find('=') != std::string::npos) {
+          std::string shell_str = command;
+          for (auto const& i: replace_arguments) {
+            shell_str = shell_str + " " + i;
           }
+          if (g_verbose) { std::cout << "bash -c '" << shell_str << "'" << std::endl; }
+          boost::process::child child(boost::process::search_path("bash"), "-c", boost::process::args+=shell_str);
+          child.detach();
+        } else {
+          if (g_verbose) { std::cout << cmd << " "; print_vector_string(std::cout, replace_arguments); }
+          boost::process::child child(cmd, boost::process::args=replace_arguments);
+          child.detach();
         }
       }
     }
+  }
+  if (current_online_devices.size() == 0 && current_offline_devices.size() == 0) {
+    std::cout << "当前没有设备" << std::endl;
   }
 }
 
@@ -155,31 +195,36 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
     if (error) {
       return;
     }
+    // std::cout << std::string_view(buf.data(), read_len);
 
     if (std::string_view(buf.data(), 4) != "OKAY" ) {
       std::cerr << "adbd response_data:" << std::string_view(buf.data(), buf.size()) << std::endl;
       return;
     }
 
+    std::vector<std::string> online_devices;
+    std::vector<std::string> offline_devices;
     g_sleep_time = 1;
 
-    if (read_len > 4) {
-      response_data.insert(response_data.end(), buf.data() + 4, buf.data() + read_len);
-    }
+    response_data.insert(response_data.end(), buf.data() + 4, buf.data() + read_len);
+
     while(true) {
       while (response_data.size() > 4) {
-        int data_len = std::stoi(std::string(response_data.data(), 4), 0, 16);
-        response_data.erase(response_data.begin(), std::next(response_data.begin(), 4));
-        if (data_len != 0 && response_data.size() >= data_len) {
-          std::vector<char> data;
-          data.insert(data.end(), response_data.begin(), std::next(response_data.begin(), data_len));
-          response_data.erase(response_data.begin(), std::next(response_data.begin(), data_len));
-
-          execute_process_for_device(std::move(data), commands);
+        // std::cout << std::string_view(response_data.data(), response_data.size());
+        int data_len = std::stoi(std::string(response_data.data(), response_data.data() + 4), nullptr, 16);
+        std::vector<char> data;
+        if (data_len >= 0 && response_data.size() >= data_len) {
+          response_data.erase(response_data.begin(), std::next(response_data.begin(), 4));
+          if (data_len > 0) {
+            data.insert(data.end(), response_data.begin(), std::next(response_data.begin(), data_len));
+            response_data.erase(response_data.begin(), std::next(response_data.begin(), data_len));
+          }
+          execute_process_for_device(std::move(data), commands, online_devices, offline_devices);
         }
       }
 
-      read_len = socket.read_some(boost::asio::buffer(buf), error);
+      // read_len = socket.read_some(boost::asio::buffer(buf), error);
+      read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(1), error);
       if (read_len < 0 || error) { break; }
       if (read_len > 0) {
         response_data.insert(response_data.end(), buf.data(), buf.data() + read_len);

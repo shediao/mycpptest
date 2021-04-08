@@ -1,11 +1,8 @@
 
+CC := gcc
+CXX := g++
 
-# CC := clang-11
-# CXX := clang++-11
-# CC := gcc-10
-# CXX := g++-10
-CC := clang
-CXX := clang++
+HostOs := $(shell uname)
 
 BOOST_ROOT := /opt/boost/1.75.0
 
@@ -13,23 +10,27 @@ RANGE_V3_ROOT := ${HOME}/sources/range-v3
 
 GTEST_ROOT := ${HOME}/sources/googletest/googletest
 
-cflags := -Wall -Werror -I ${BOOST_ROOT}/include -g2 -O0
+cflags := -Wall -Werror -I ${BOOST_ROOT}/include -O0 -g
 cxxflags := -I ${RANGE_V3_ROOT}/include -I ${GTEST_ROOT}/include -std=c++17
 
-ldflags := -pthread
+ifeq ($(HostOs),Darwin)
+  ldflags := -pthread
+else
+  ldflags := -pthread -static-libstdc++
+endif
 
 static_libs := ${BOOST_ROOT}/lib/libboost_filesystem.a
 
 
 .PHONY: all clean run
 
-run: process_test ranges_test filesystem_test adb_test
+all: process_test ranges_test filesystem_test adbauto smart_adb
+run: all
 	./process_test
 	./filesystem_test
 	./ranges_test
 	./adb_test
 
-all: process_test ranges_test filesystem_test adbauto
 
 clean:
 	find . -name '*.o' -delete
@@ -67,3 +68,8 @@ adbauto.o: adbauto.cc
 
 adbauto: adbauto.o
 	${CXX} ${ldflags} $^ -o $@ ${static_libs}
+
+smart_adb.o: smart_adb.cc
+	${CXX} ${cflags} ${cxxflags} -c $< -o $@
+smart_adb: smart_adb.o
+	${CXX} ${ldflags} -o $@ $^ ${static_libs}

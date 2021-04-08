@@ -1,99 +1,101 @@
 
 
-#include <boost/process.hpp>
+#include <boost/asio.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/process/environment.hpp>
+
+#if __cpulsplus >= 201703
+#include <string_view>
+#else
+#include <boost/utility/string_ref.hpp>
+#endif
+
 
 #include <iostream>
 #include <iterator>
-#include <string_view>
-
-#include <range/v3/all.hpp>
+#include <array>
 
 
-// TODO:
-// 1. command not exists
-// 2. process ternimal
-// 3. set environment
-// 4. not capture stdout and stderr
-// 5. close stdout,stderr,stdin
-// 6. redectory stdout,stderr
-class ChildProcess {
-public:
-  template <typename... Args>
-  explicit ChildProcess(Args&&... args):
-    stdout_stream(),
-    stderr_stream(),
-    child(std::forward<Args>(args)..., boost::process::std_out > stdout_stream, boost::process::std_err > stderr_stream),
-    stdout_buf(std::istreambuf_iterator<char>(stdout_stream), std::istreambuf_iterator<char>()),
-    stderr_buf(std::istreambuf_iterator<char>(stderr_stream), std::istreambuf_iterator<char>()),
-    _exit_code(-1),
-    _all_lines_range(stdout_buf | ranges::views::trim((int(*)(int))&std::isspace) | ranges::views::split_when(&isnewline))
-    { if (child.valid()) { child.wait(); _exit_code = child.exit_code(); } }
+int GetAdbdVersion(std::string const& host, int port) {
+  int version = -1;
+  try {
+    using boost::asio::ip::tcp;
+    boost::asio::io_service io;
+    tcp::socket socket(io);
+    tcp::endpoint endpoint(boost::asio::ip::address::from_string(host), port);
+    socket.connect(endpoint);
 
-  ChildProcess() = delete;
-  ChildProcess(const ChildProcess&) = delete;
-  ChildProcess& operator=(const ChildProcess&) = delete;
+    // write
+    std::string version_msg {"000Chost:version"};
+    boost::system::error_code ignored_error;
+    boost::asio::write(socket, boost::asio::buffer(version_msg), ignored_error);
 
-  ChildProcess(ChildProcess&&) = delete;
-  ChildProcess& operator=(ChildProcess&&) = delete;
+    // read
+    std::array<char, 64> buf;
+    std::vector<char> response_data;
+    boost::system::error_code error;
+    auto read_len = boost::asio::read(socket, boost::asio::buffer(buf), boost::asio::transfer_at_least(8), error);
+    if (error) {
+      return -1;
+    }
 
-  std::string_view stdout_str() { return std::string_view(stdout_buf.data(), stdout_buf.size()); }
-  std::string_view stderr_str() { return std::string_view(stderr_buf.data(), stderr_buf.size()); }
-  const std::vector<char>& stdout_raw() { return stdout_buf; }
-  const std::vector<char>& stderr_raw() { return stderr_buf; }
-  std::string_view first_line() & {
-    decltype(auto) first_line_range = *_all_lines_range.begin();
-    return std::string_view(&*(first_line_range.begin()), ranges::distance(first_line_range));
+#if __cpulsplus >= 201703
+    using string_view = std::string_view;
+#else
+    using string_view = boost::string_ref;
+#endif
+    if (string_view(buf.data(), 4) != "OKAY" ) {
+      std::cerr << "adbd response_data:" << string_view(buf.data(), buf.size()) << std::endl;
+      return -1;
+    }
+    int data_len = std::stoi(std::string(buf.data() + 4, 4), 0, 16);
+
+    response_data.insert(response_data.end(), buf.data() + 8, buf.data() + read_len);
+
+    while ((read_len = socket.read_some(boost::asio::buffer(buf), error)) > 0) {
+      if (error) return -1;
+      response_data.insert(response_data.end(), buf.data(), buf.data() + read_len);
+      if (static_cast<int>(response_data.size()) >= data_len) { break; }
+    }
+    return std::stoi(std::string(response_data.data(), response_data.size()), 0, 16);
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    version = -1;
   }
-  std::string first_line() && {
-    decltype(auto) first_line_range = *_all_lines_range.begin();
-    return std::string(&*(first_line_range.begin()), ranges::distance(first_line_range));
-  }
-  int exit_code() { return _exit_code; }
-  auto& all_lines_range() {
-    return this->_all_lines_range;
-  }
-private:
-  static bool isnewline(char x) { return x == '\n' || x == '\r'; }
-private:
-  boost::process::ipstream stdout_stream;
-  boost::process::ipstream stderr_stream;
-  boost::process::child child;
-  std::vector<char> stdout_buf;
-  std::vector<char> stderr_buf;
-  int _exit_code;
-  decltype(stdout_buf | ranges::views::trim((int(*)(int))nullptr) | ranges::views::split_when((bool(*)(char))nullptr)) _all_lines_range;
-};
+  return version;
+}
 
-class Run {
-public:
-  template <typename... Args>
-  explicit Run(Args&&... args):child(std::forward<Args>(args)...), _exit_code(-1) {
-    if (child.valid()) {
-      child.wait();
-      _exit_code = child.exit_code();
+bool is_executable(const boost::filesystem::path &p) {
+  boost::system::error_code ec;
+  bool file = boost::filesystem::is_regular_file(p, ec);
+  if (!ec && file && ::access(p.c_str(), X_OK) == 0) {
+    return true;
+  }
+  return false;
+}
+
+boost::filesystem::path get_adb_path(boost::filesystem::path const& this_dir, int adb_server_version) {
+  auto adb_cmd = boost::filesystem::path("");
+
+  if (adb_server_version > 0) {
+    adb_cmd = this_dir / "adbs" / ("adb-1.0." + std::to_string(adb_server_version));
+    if (is_executable(adb_cmd)) { return adb_cmd; }
+  }
+#ifdef __linux__
+  adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Android" / "Sdk" / "platform-tools" / "adb";
+#endif
+#ifdef __APPLE__
+  adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Library" / "Android" / "sdk" / "platform-tools" / "adb";
+#endif
+  if (is_executable(adb_cmd)) { return adb_cmd; }
+
+  std::vector<boost::filesystem::path> path = ::boost::this_process::path();
+  for (const boost::filesystem::path & pp : path) {
+    if (pp.leaf() == "platform-tools") {
+      auto p = pp / "adb";
+      if (is_executable(p) && is_executable( pp / "fastboot")) { return p; }
     }
   }
-
-  Run() = delete;
-  Run(const Run&) = delete;
-  Run& operator=(const Run&) = delete;
-
-  Run(Run&&) = delete;
-  Run& operator=(Run&&) = delete;
-
-  int exit_code() { return _exit_code; }
-private:
-  boost::process::child child;
-  int _exit_code;
-};
-
-auto get_adb_path() {
-  auto adb_cmd = boost::process::search_path("adb");
-  if (exists(adb_cmd)) { return adb_cmd; }
-
-  const char* adb_env = std::getenv("ADB");
-  if (adb_env && std::strlen(adb_env) > 0) { adb_cmd = adb_env; }
-  if (exists(adb_cmd)) { return adb_cmd; }
 
   for (auto env : {"ANDROID_SDK_ROOT", "ANDROID_SDK", "ANDROID_HOME"}) {
     const char* my_env = std::getenv(env);
@@ -101,24 +103,19 @@ auto get_adb_path() {
         adb_cmd = my_env;
         adb_cmd = adb_cmd / "platform-tools" / "adb";
     }
-    if (exists(adb_cmd)) { return adb_cmd; }
+    if (is_executable(adb_cmd)) { return adb_cmd; }
   }
-#ifdef __linux__
-  adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Android" / "Sdk" / "platform-tools" / "adb";
-#endif
-#ifdef __apple__
-  adb_cmd = boost::filesystem::path(::getenv("HOME")) / "Library" / "Android" / "sdk" / "platform-tools" / "adb";
-#endif
-  if (exists(adb_cmd)) { return adb_cmd; }
 
-  return boost::filesystem::path("");
+  adb_cmd = this_dir / "adb-last";
+  return adb_cmd;
 }
 
 int main(int argc, char* argv[]) {
-  auto adb_path = get_adb_path();
-  if (exists(adb_path)) {
-    return ::Run(adb_path, "--version").exit_code();
-  }
+  int adb_server_version = GetAdbdVersion("127.0.0.1", 5037);
+  boost::filesystem::path this_path(argv[0]);
+  auto this_dir = this_path.parent_path();
+  auto adb_path = get_adb_path(this_dir, adb_server_version);
+  execv(boost::filesystem::absolute(adb_path).c_str(), argv);
   return 1;
 }
 
