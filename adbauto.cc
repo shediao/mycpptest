@@ -2,6 +2,8 @@
 #include <sys/stat.h>
 #include <sys/resource.h>
 
+#include <assert.h>
+
 #include <iostream>
 #include <array>
 
@@ -213,7 +215,7 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
         // std::cout << std::string_view(response_data.data(), response_data.size());
         int data_len = std::stoi(std::string(response_data.data(), response_data.data() + 4), nullptr, 16);
         std::vector<char> data;
-        if (data_len >= 0 && response_data.size() >= data_len) {
+        if (data_len >= 0 && static_cast<int>(response_data.size()) >= data_len) {
           response_data.erase(response_data.begin(), std::next(response_data.begin(), 4));
           if (data_len > 0) {
             data.insert(data.end(), response_data.begin(), std::next(response_data.begin(), data_len));
@@ -304,13 +306,16 @@ int main(int argc, char* const argv[]) {
     if (rl.rlim_max == RLIM_INFINITY) {
       rl.rlim_max = 1024;
     }
-    for (int i = 0; i < rl.rlim_max; ++i) {
+    for (int i = 0; i < 1024; ++i) {
       close(i);
     }
 
     fd0 = open("/dev/null", O_RDWR);
     fd1 = dup(0);
     fd2 = dup(0);
+    assert(fd0 == 0);
+    assert(fd1 == 1);
+    assert(fd2 == 2);
   }
 #endif
 
