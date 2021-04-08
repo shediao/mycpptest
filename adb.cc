@@ -197,7 +197,7 @@ int GetAdbdVersion(int port) {
     while ((read_len = socket.read_some(boost::asio::buffer(buf), error)) > 0) {
       if (error) return -1;
       response_data.insert(response_data.end(), buf.data(), buf.data() + read_len);
-      if (response_data.size() >= data_len) { break; }
+      if (static_cast<int>(response_data.size()) >= data_len) { break; }
     }
     return std::stoi(std::string(response_data.data(), response_data.size()), 0, 16);
   } catch (std::exception& e) {
@@ -283,7 +283,7 @@ std::vector<std::string> getAndroidDevices(int port) {
     while ((read_len = socket.read_some(boost::asio::buffer(buf), error)) > 0) {
       if (error) return devices;
       response_data.insert(response_data.end(), buf.data(), buf.data() + read_len);
-      if (response_data.size() >= data_len) { break; }
+      if (static_cast<int>(response_data.size()) >= data_len) { break; }
     }
 
     std::string_view devices_info(response_data.data(), response_data.size());

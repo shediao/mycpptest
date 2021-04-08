@@ -239,6 +239,8 @@ void TrackAndroidDevice(std::string const& host, int port, std::vector<std::stri
 
 int main(int argc, char* const argv[]) {
 
+  std::string host{"127.0.0.1"};
+  int port = 5037;
   int command_index = 1;
   for (; command_index < argc; ++command_index) {
     std::string_view arg(argv[command_index]);
@@ -251,6 +253,10 @@ int main(int argc, char* const argv[]) {
     } else if (arg == "--no-daemon") {
       g_daemon_process = false;
 #endif
+    } else if (arg == "-H" || arg == "--host") {
+      host = argv[++command_index];
+    } else if (arg == "-p" || arg == "--port") {
+      port = std::atoi(argv[++command_index]);
     } else if (arg == "-v" || arg == "--verbose") {
       g_verbose = true;
     } else if (arg == "-V" || arg == "--version") {
@@ -324,7 +330,7 @@ int main(int argc, char* const argv[]) {
     commands.insert(commands.end(), argv + command_index, argv + argc);
   }
   while (true) {
-    TrackAndroidDevice("127.0.0.1", 5037, commands);
+    TrackAndroidDevice(host, port, commands);
     if (g_sleep_time < 60) {
       g_sleep_time = g_sleep_time + 1;
     } else {

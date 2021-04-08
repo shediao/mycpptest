@@ -16,7 +16,7 @@ cxxflags := -I ${RANGE_V3_ROOT}/include -I ${GTEST_ROOT}/include -std=c++17
 ifeq ($(HostOs),Darwin)
   ldflags := -pthread
 else
-  ldflags := -pthread -static-libstdc++
+  ldflags := -pthread -static-libstdc++ -static-libgcc
 endif
 
 static_libs := ${BOOST_ROOT}/lib/libboost_filesystem.a
@@ -24,7 +24,7 @@ static_libs := ${BOOST_ROOT}/lib/libboost_filesystem.a
 
 .PHONY: all clean run
 
-all: process_test ranges_test filesystem_test adbauto smart_adb
+all: process_test ranges_test filesystem_test adb_test adbauto smart_adb
 run: all
 	./process_test
 	./filesystem_test
