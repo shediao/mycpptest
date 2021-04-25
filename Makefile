@@ -2,23 +2,25 @@
 CC := gcc
 CXX := g++
 
-HostOs := $(shell uname)
+HostOs := $(shell uname -s)
 
-BOOST_ROOT := /opt/boost/1.76.0
-
+BOOST_ROOT := /opt/boost/1.75.0
+ifneq ("$(wildcard /opt/boost/1.76.0/lib)","")
+  BOOST_ROOT := /opt/boost/1.76.0
+endif
 RANGE_V3_ROOT := ${HOME}/sources/range-v3
-
 GTEST_ROOT := ${HOME}/sources/googletest/googletest
 
-cflags := -Wall -Werror -I ${BOOST_ROOT}/include -O0 -g -Wno-deprecated-declarations
-cxxflags := -I ${RANGE_V3_ROOT}/include -I ${GTEST_ROOT}/include -std=c++17 -nostdinc++ -isystem/opt/libc++/12.0.0/include/c++/v1
-
+cflags := -Wall -Werror -I ${BOOST_ROOT}/include -O0 -g
+cxxflags := -I ${RANGE_V3_ROOT}/include -I ${GTEST_ROOT}/include -std=c++17
 ldflags := -pthread
 
 libcxx_libs :=
 ifneq ("$(wildcard /opt/libc++/12.0.0/lib/libc++.a)","")
   ldflags := ${ldflags} -nostdlib++
   libcxx_libs := /opt/libc++/12.0.0/lib/libc++.a /opt/libc++/12.0.0/lib/libc++abi.a
+  cxxflags := ${cxxflags} -nostdinc++ -isystem/opt/libc++/12.0.0/include/c++/v1
+  cflags := ${cflags} -Wno-deprecated-declarations
 else
   ifeq ($(HostOs), Linux)
     ldflags := ${ldflags} -pthread -static-libstdc++ -static-libgcc
