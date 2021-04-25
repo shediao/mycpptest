@@ -25,7 +25,7 @@ TEST(Adb, GetNewestAdb) {
   ASSERT_EQ(GetNewestAdb().path(), default_android_sdk / "platform-tools" / "adb");
 }
 TEST(Adb, GetAdbFromPath) {
-  ASSERT_NE(GetAdbFromPath().path(), default_android_sdk / "platform-tools" / "adb");
+  ASSERT_EQ(GetAdbFromPath().path(), default_android_sdk / "platform-tools" / "adb");
 }
 TEST(Adb, GetAllAdbs) {
   ASSERT_GT((int)GetAllAdbs().size(), 0);
