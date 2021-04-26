@@ -4,6 +4,8 @@ CXX := g++
 
 HostOs := $(shell uname -s)
 
+out_dir := $(shell uname -s)_$(shell uname -m)
+
 BOOST_ROOT := /opt/boost/1.75.0
 ifneq ("$(wildcard /opt/boost/1.76.0/lib)","")
   BOOST_ROOT := /opt/boost/1.76.0
@@ -31,52 +33,54 @@ BOOST_FILESYSTEM_LIB := ${BOOST_ROOT}/lib/libboost_filesystem.a
 
 .PHONY: all clean run
 
-all: process_test ranges_test filesystem_test adb_test adbauto smart_adb
+all: ${out_dir}/process_test ${out_dir}/ranges_test ${out_dir}/filesystem_test ${out_dir}/adb_test ${out_dir}/adbauto ${out_dir}/smart_adb
 run: all
-	./process_test
-	./filesystem_test
-	./ranges_test
-	./adb_test
+	@${out_dir}/process_test
+	@${out_dir}/filesystem_test
+	@${out_dir}/ranges_test
+	@${out_dir}/adb_test
 
+${out_dir}:
+	mkdir -p ${out_dir}
 
 clean:
 	find . -name '*.o' -delete
 
-gtest-all.o : ${GTEST_ROOT}/src/gtest-all.cc
+${out_dir}/gtest-all.o : ${GTEST_ROOT}/src/gtest-all.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -I ${GTEST_ROOT} -c $< -o $@
-gtest_main.o : ${GTEST_ROOT}/src/gtest_main.cc
+${out_dir}/gtest_main.o : ${GTEST_ROOT}/src/gtest_main.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -I ${GTEST_ROOT} -c $< -o $@
 
-process_test.o: process_test.cc
+${out_dir}/process_test.o: process_test.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-process_test: gtest-all.o process_test.o
+${out_dir}/process_test: ${out_dir}/gtest-all.o ${out_dir}/process_test.o
 	${CXX} ${ldflags} $^ -o $@ ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
 
-ranges_test.o: ranges_test.cc
+${out_dir}/ranges_test.o: ranges_test.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-ranges_test: ranges_test.o gtest-all.o
+${out_dir}/ranges_test: ${out_dir}/ranges_test.o ${out_dir}/gtest-all.o | ${out_dir}
 	${CXX} ${ldflags} $< -o $@ ${libcxx_libs}
 
-filesystem_test.o: filesystem_test.cc
+${out_dir}/filesystem_test.o: filesystem_test.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-filesystem_test: filesystem_test.o gtest-all.o gtest_main.o
+${out_dir}/filesystem_test: ${out_dir}/filesystem_test.o ${out_dir}/gtest-all.o ${out_dir}/gtest_main.o | ${out_dir}
 	${CXX} ${ldflags} $^ -o $@  ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
 
-adb.o: adb.cc
+${out_dir}/adb.o: adb.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
 
-adb_test.o: adb_test.cc
+${out_dir}/adb_test.o: adb_test.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-adb_test: gtest-all.o adb_test.o ./adb.o
+${out_dir}/adb_test: ${out_dir}/gtest-all.o ${out_dir}/adb_test.o ${out_dir}/adb.o | ${out_dir}
 	${CXX} ${ldflags} $^ -o $@  ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
 
-adbauto.o: adbauto.cc
+${out_dir}/adbauto.o: adbauto.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
 
-adbauto: adbauto.o
+${out_dir}/adbauto: ${out_dir}/adbauto.o | ${out_dir}
 	${CXX} ${ldflags} $^ -o $@ ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
 
-smart_adb.o: smart_adb.cc
+${out_dir}/smart_adb.o: smart_adb.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -c $< -o $@
-smart_adb: smart_adb.o
+${out_dir}/smart_adb: ${out_dir}/smart_adb.o | ${out_dir}
 	${CXX} ${ldflags} -o $@ $^ ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
