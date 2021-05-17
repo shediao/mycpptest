@@ -4,7 +4,7 @@ CXX := g++
 
 HostOs := $(shell uname -s)
 
-out_dir := $(shell uname -s)_$(shell uname -m)
+out_dir := out/$(shell uname -s | tr A-Z a-z)-$(shell uname -m)
 
 BOOST_ROOT := /opt/boost/1.75.0
 ifneq ("$(wildcard /opt/boost/1.76.0/lib)","")
@@ -17,19 +17,20 @@ cflags := -Wall -Werror -I ${BOOST_ROOT}/include -O0 -g
 cxxflags := -I ${RANGE_V3_ROOT}/include -I ${GTEST_ROOT}/include -std=c++17
 ldflags := -pthread
 
+llvm_prefix := /opt/llvm/12.x
 libcxx_libs :=
-ifneq ("$(wildcard /opt/libc++/12.0.0/lib/libc++.a)","")
+ifneq ("$(wildcard ${llvm_prefix}/lib/libc++.a)","")
   ldflags := ${ldflags} -nostdlib++
-  libcxx_libs := /opt/libc++/12.0.0/lib/libc++.a /opt/libc++/12.0.0/lib/libc++abi.a
-  cxxflags := ${cxxflags} -nostdinc++ -isystem/opt/libc++/12.0.0/include/c++/v1
+  libcxx_libs := ${llvm_prefix}/lib/libc++.a ${llvm_prefix}/lib/libc++abi.a
+  cxxflags := ${cxxflags} -nostdinc++ -isystem${llvm_prefix}/include/c++/v1
   cflags := ${cflags} -Wno-deprecated-declarations
 else
   ifeq ($(HostOs), Linux)
-    ldflags := ${ldflags} -pthread -static-libstdc++ -static-libgcc
+    ldflags := ${ldflags} -static-libstdc++ -static-libgcc
   endif
 endif
 
-BOOST_FILESYSTEM_LIB := ${BOOST_ROOT}/lib/libboost_filesystem.a
+BOOST_LIBS := ${BOOST_ROOT}/lib/libboost_filesystem.a ${BOOST_ROOT}/lib/libboost_program_options.a
 
 .PHONY: all clean run
 
@@ -55,20 +56,20 @@ ${out_dir}/gtest_main.o : ${GTEST_ROOT}/src/gtest_main.cc | ${out_dir}
 	${CXX} ${cflags} ${cxxflags} -I ${GTEST_ROOT} -c $< -o $@
 
 ${out_dir}/process_test: ${out_dir}/gtest-all.o ${out_dir}/process_test.o
-	${CXX} ${ldflags} $^ -o $@ ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
+	${CXX} ${ldflags} $^ -o $@ ${libcxx_libs} ${BOOST_LIBS}
 
 ${out_dir}/ranges_test: ${out_dir}/ranges_test.o ${out_dir}/gtest-all.o
 	${CXX} ${ldflags} $< -o $@ ${libcxx_libs}
 
 ${out_dir}/filesystem_test: ${out_dir}/filesystem_test.o ${out_dir}/gtest-all.o ${out_dir}/gtest_main.o
-	${CXX} ${ldflags} $^ -o $@  ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
+	${CXX} ${ldflags} $^ -o $@  ${libcxx_libs} ${BOOST_LIBS}
 
 ${out_dir}/adb_test: ${out_dir}/gtest-all.o ${out_dir}/adb_test.o ${out_dir}/adb.o
-	${CXX} ${ldflags} $^ -o $@  ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
+	${CXX} ${ldflags} $^ -o $@  ${libcxx_libs} ${BOOST_LIBS}
 
 ${out_dir}/adbauto: ${out_dir}/adbauto.o
-	${CXX} ${ldflags} $^ -o $@ ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
+	${CXX} ${ldflags} $^ -o $@ ${libcxx_libs} ${BOOST_LIBS}
 
 ${out_dir}/smart_adb: ${out_dir}/smart_adb.o
-	${CXX} ${ldflags} -o $@ $^ ${libcxx_libs} ${BOOST_FILESYSTEM_LIB}
+	${CXX} ${ldflags} -o $@ $^ ${libcxx_libs} ${BOOST_LIBS}
 

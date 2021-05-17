@@ -1,4 +1,3 @@
 *.o
 /build/
-/Darwin_x86_64/
-/Linux_x86_64/
+/out/
