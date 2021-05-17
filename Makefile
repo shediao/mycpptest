@@ -1,6 +1,8 @@
 
-CC := gcc
-CXX := g++
+LLVM_ROOT := /opt/llvm/12.x
+
+CC := ${LLVM_ROOT}/bin/clang
+CXX := ${LLVM_ROOT}/bin/clang++
 
 HostOs := $(shell uname -s)
 
@@ -16,17 +18,16 @@ GTEST_ROOT := ${HOME}/sources/googletest/googletest
 cflags := -Wall -Werror -I ${BOOST_ROOT}/include -O0 -g
 cxxflags := -I ${RANGE_V3_ROOT}/include -I ${GTEST_ROOT}/include -std=c++17
 ldflags := -pthread
-
-llvm_prefix := /opt/llvm/12.x
 libcxx_libs :=
-ifneq ("$(wildcard ${llvm_prefix}/lib/libc++.a)","")
-  ldflags := ${ldflags} -nostdlib++
-  libcxx_libs := ${llvm_prefix}/lib/libc++.a ${llvm_prefix}/lib/libc++abi.a
-  cxxflags := ${cxxflags} -nostdinc++ -isystem${llvm_prefix}/include/c++/v1
-  cflags := ${cflags} -Wno-deprecated-declarations
-else
-  ifeq ($(HostOs), Linux)
+
+ifeq ($(HostOs), Linux)
     ldflags := ${ldflags} -static-libstdc++ -static-libgcc
+else
+  ifneq ("$(wildcard ${LLVM_ROOT}/lib/libc++.a)","")
+    ldflags := ${ldflags} -nostdlib++
+    libcxx_libs := ${LLVM_ROOT}/lib/libc++.a ${LLVM_ROOT}/lib/libc++abi.a
+    cxxflags := ${cxxflags} -nostdinc++ -isystem${LLVM_ROOT}/include/c++/v1
+    cflags := ${cflags} -Wno-deprecated-declarations
   endif
 endif
 
