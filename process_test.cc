@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include "process.hpp"
+
 // TODO:
 // 1. command not exists
 // 2. process ternimal
@@ -147,6 +149,11 @@ TEST(Run, ExitCode) {
 
   // ASSERT_EQ(::Run(boost::process::search_path("sleep"), "3").exit_code(), 0);
 
+}
+
+TEST(Doler, Run) {
+  auto x = $("echo -n 123");
+  ASSERT_EQ(x.stdout_str(), "123");
 }
 
 int main(int argc, char* argv[]) {

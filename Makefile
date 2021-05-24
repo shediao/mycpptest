@@ -1,10 +1,16 @@
 
-LLVM_ROOT := /opt/llvm/12.x
-
-CC := ${LLVM_ROOT}/bin/clang
-CXX := ${LLVM_ROOT}/bin/clang++
+LLVM_ROOT := /opt/llvm/11.x
 
 HostOs := $(shell uname -s)
+
+ifeq ($(HostOs), Linux)
+CC := ${LLVM_ROOT}/bin/clang
+CXX := ${LLVM_ROOT}/bin/clang++
+else
+CC := gcc #${LLVM_ROOT}/bin/clang
+CXX := g++ # ${LLVM_ROOT}/bin/clang++
+endif
+
 
 out_dir := out/$(shell uname -s | tr A-Z a-z)-$(shell uname -m)
 
@@ -26,7 +32,7 @@ else
   ifneq ("$(wildcard ${LLVM_ROOT}/lib/libc++.a)","")
     ldflags := ${ldflags} -nostdlib++
     libcxx_libs := ${LLVM_ROOT}/lib/libc++.a ${LLVM_ROOT}/lib/libc++abi.a
-    cxxflags := ${cxxflags} -nostdinc++ -isystem${LLVM_ROOT}/include/c++/v1
+    cxxflags := -nostdinc++ -isystem${LLVM_ROOT}/include/c++/v1 ${cxxflags}
     cflags := ${cflags} -Wno-deprecated-declarations
   endif
 endif
@@ -45,7 +51,7 @@ run: all
 ${out_dir}:
 	mkdir -p ${out_dir}
 
-${out_dir}/%.o: %.cc | ${out_dir}
+${out_dir}/%.o: %.cc | ${out_dir} Makefile
 	${CXX} ${cflags} ${cxxflags} -I ${GTEST_ROOT} -c $< -o $@
 
 clean:
