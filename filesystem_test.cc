@@ -20,6 +20,9 @@ TEST(Filesystem, Path) {
   std::cout << files.size() << std::endl;
   std::cout << std::getenv("PATH") << std::endl;
 
+  auto cwd = current_path();
+  std::cout << "cwd: " << cwd << std::endl;
+
 
   // std::vector x{1, 2, 3, 4};
 

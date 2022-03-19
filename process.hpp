@@ -6,9 +6,11 @@
 #include <string_view>
 #include <vector>
 
-class ProcessOutput {
+namespace xusd {
+
+class ProcessResult {
 public:
-  ProcessOutput(int exit_code, std::vector<char> out, std::vector<char> err):
+  ProcessResult(int exit_code, std::vector<char> out, std::vector<char> err):
   _exit_code{exit_code},
   _stdout{std::move(out)},
   _stderr{std::move(err)}
@@ -34,13 +36,24 @@ public:
 public:
   ShellType shell = ShellType::BASH;
   template <typename... Args>
-  ProcessOutput operator()(Args&&... args) {
+  ProcessResult operator()(Args&&... args) {
 
     boost::process::ipstream stdout_stream;
     boost::process::ipstream stderr_stream;
 
+    auto shell_path = boost::process::search_path("bash");
+    switch(shell) {
+      case ShellType::ZSH:
+        shell_path = boost::process::search_path("zsh");
+        break;
+      case ShellType::FISH:
+        shell_path = boost::process::search_path("fish");
+        break;
+      default:
+        break;
+    }
     boost::process::child child(
-      boost::process::search_path("bash"),
+      shell_path,
       "-c",
       std::forward<Args>(args)...,
       boost::process::std_out > stdout_stream,
@@ -54,12 +67,14 @@ public:
       child.wait();
       exit_code = child.exit_code();
     }
-    return ProcessOutput(exit_code, std::move(stdout_buf), std::move(stderr_buf));
+    return ProcessResult(exit_code, std::move(stdout_buf), std::move(stderr_buf));
   }
 };
 
+}  // namespace xusd
+
 namespace {
-  ShellCommand $;
+  xusd::ShellCommand $;
 }
 #endif // _PROCESS_HPP_
 
